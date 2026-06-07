@@ -218,10 +218,7 @@ const sendOtp = async (req, res, next) => {
 
     const result = await twilioService.sendOTP(`+91${phone}`);
 
-    return res.status(200).json({
-      message: "OTP sent successfully",
-      ...(result.devMode ? { devMode: true, devOtp: "123456" } : {}),
-    });
+    return res.status(200).json({ message: "OTP sent successfully" });
   } catch (error) {
     console.error("Send OTP error:", error);
     return res.status(500).json({ error: "Failed to send OTP" });
@@ -277,10 +274,7 @@ const forgotPassword = async (req, res, next) => {
 
     const result = await twilioService.sendOTP(`+91${phone}`);
 
-    return res.status(200).json({
-      message: "OTP sent for password reset",
-      ...(result.devMode ? { devMode: true, devOtp: "123456" } : {}),
-    });
+    return res.status(200).json({ message: "OTP sent for password reset" });
   } catch (error) {
     console.error("Forgot password error:", error);
     return res.status(500).json({ error: "Failed to send OTP" });
