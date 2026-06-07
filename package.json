@@ -1,7 +1,7 @@
 {
-  "name": "artverse-backend",
+  "name": "dheena-arts-backend",
   "version": "1.0.0",
-  "description": "ArtVerse backend API",
+  "description": "Dheena Arts backend API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -24,7 +24,8 @@
     "mongoose": "^7.6.3",
     "multer": "^1.4.5-lts.1",
     "razorpay": "^2.9.2",
-    "sharp": "^0.33.2"
+    "sharp": "^0.33.2",
+    "twilio": "^6.0.2"
   },
   "devDependencies": {
     "jest": "^29.7.0",

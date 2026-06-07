@@ -8,10 +8,21 @@ const razorpayService = require("../services/razorpayService");
  */
 const listCourses = async (req, res, next) => {
   try {
-    const courses = await Course.find({ isPublished: true })
-      .select("title description thumbnailUrl price lessons")
-      .sort({ createdAt: -1 })
-      .lean();
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 12));
+    const skip = (page - 1) * limit;
+
+    const filter = { isPublished: true };
+
+    const [courses, total] = await Promise.all([
+      Course.find(filter)
+        .select("title description thumbnailUrl price lessons")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Course.countDocuments(filter),
+    ]);
 
     const formatted = courses.map((course) => ({
       id: course._id,
@@ -22,7 +33,15 @@ const listCourses = async (req, res, next) => {
       lessonCount: (course.lessons || []).length,
     }));
 
-    return res.status(200).json({ courses: formatted });
+    return res.status(200).json({
+      courses: formatted,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
     next(error);
   }

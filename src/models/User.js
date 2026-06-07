@@ -45,7 +45,7 @@ const addressSchema = new mongoose.Schema(
 );
 
 /**
- * User schema for the ArtVerse platform.
+ * User schema for the Dheena Arts platform.
  */
 const userSchema = new mongoose.Schema(
   {

@@ -5,6 +5,7 @@ const {
   generateRefreshToken,
   verifyToken,
 } = require("../utils/jwt");
+const twilioService = require("../services/twilioService");
 
 /**
  * Validation rules for the register endpoint.
@@ -203,6 +204,131 @@ const me = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/auth/send-otp
+ * Send OTP to a phone number for verification.
+ */
+const sendOtp = async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    }
+
+    const result = await twilioService.sendOTP(`+91${phone}`);
+
+    return res.status(200).json({
+      message: "OTP sent successfully",
+      ...(result.devMode ? { devMode: true, devOtp: "123456" } : {}),
+    });
+  } catch (error) {
+    console.error("Send OTP error:", error);
+    return res.status(500).json({ error: "Failed to send OTP" });
+  }
+};
+
+/**
+ * POST /api/auth/verify-otp
+ * Verify OTP for a phone number.
+ */
+const verifyOtp = async (req, res, next) => {
+  try {
+    const { phone, code } = req.body;
+
+    if (!phone || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    }
+
+    if (!code) {
+      return res.status(400).json({ error: "OTP code is required" });
+    }
+
+    const result = await twilioService.verifyOTP(`+91${phone}`, code);
+
+    if (!result.valid) {
+      return res.status(400).json({ error: "Invalid or expired OTP" });
+    }
+
+    return res.status(200).json({ verified: true });
+  } catch (error) {
+    console.error("Verify OTP error:", error);
+    return res.status(500).json({ error: "Failed to verify OTP" });
+  }
+};
+
+/**
+ * POST /api/auth/forgot-password
+ * Send OTP to phone for password reset.
+ */
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    }
+
+    // Check if user exists
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ error: "No account found with this phone number" });
+    }
+
+    const result = await twilioService.sendOTP(`+91${phone}`);
+
+    return res.status(200).json({
+      message: "OTP sent for password reset",
+      ...(result.devMode ? { devMode: true, devOtp: "123456" } : {}),
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+    return res.status(500).json({ error: "Failed to send OTP" });
+  }
+};
+
+/**
+ * POST /api/auth/reset-password
+ * Verify OTP and reset password.
+ */
+const resetPassword = async (req, res, next) => {
+  try {
+    const { phone, code, newPassword } = req.body;
+
+    if (!phone || !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    }
+
+    if (!code) {
+      return res.status(400).json({ error: "OTP code is required" });
+    }
+
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+
+    // Verify OTP
+    const result = await twilioService.verifyOTP(`+91${phone}`, code);
+    if (!result.valid) {
+      return res.status(400).json({ error: "Invalid or expired OTP" });
+    }
+
+    // Update password
+    const user = await User.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Reset password error:", error);
+    return res.status(500).json({ error: "Failed to reset password" });
+  }
+};
+
 module.exports = {
   registerValidation,
   loginValidation,
@@ -210,4 +336,8 @@ module.exports = {
   login,
   refresh,
   me,
+  sendOtp,
+  verifyOtp,
+  forgotPassword,
+  resetPassword,
 };

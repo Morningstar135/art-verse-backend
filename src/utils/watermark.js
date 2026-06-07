@@ -3,7 +3,7 @@ const sharp = require("sharp");
 /**
  * Default watermark text. Override via env WATERMARK_TEXT.
  */
-const WATERMARK_TEXT = process.env.WATERMARK_TEXT || "ArtVerse";
+const WATERMARK_TEXT = process.env.WATERMARK_TEXT || "Dheena Arts";
 
 /**
  * Apply a semi-transparent diagonal watermark across the entire image.

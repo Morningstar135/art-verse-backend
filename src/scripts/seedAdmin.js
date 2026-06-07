@@ -9,7 +9,7 @@ const seedAdmin = async () => {
     await mongoose.connect(process.env.MONGODB_URI);
     console.log("Connected to MongoDB");
 
-    const existing = await User.findOne({ email: "admin@artverse.com" });
+    const existing = await User.findOne({ email: "admin@dheenaarts.com" });
     if (existing) {
       console.log("Admin user already exists. Skipping seed.");
       await mongoose.disconnect();
@@ -18,7 +18,7 @@ const seedAdmin = async () => {
 
     const admin = await User.create({
       name: "Admin",
-      email: "admin@artverse.com",
+      email: "admin@dheenaarts.com",
       password: "changeme123",
       role: "admin",
     });
