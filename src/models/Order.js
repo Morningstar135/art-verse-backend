@@ -142,8 +142,8 @@ const orderSchema = new mongoose.Schema(
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({ orderNumber: 1 });
 
-// Pre-save hook to auto-generate orderNumber
-orderSchema.pre("save", async function (next) {
+// Pre-validate hook to auto-generate orderNumber
+orderSchema.pre("validate", async function (next) {
   if (this.isNew && !this.orderNumber) {
     try {
       const count = await mongoose.model("Order").countDocuments();

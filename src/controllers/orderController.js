@@ -91,17 +91,44 @@ const createOrder = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    await order.save();
+    // Check if Razorpay keys are configured (not placeholders)
+    const razorpayConfigured =
+      process.env.RAZORPAY_KEY_ID &&
+      !process.env.RAZORPAY_KEY_ID.includes("xxxx") &&
+      process.env.RAZORPAY_KEY_SECRET &&
+      !process.env.RAZORPAY_KEY_SECRET.includes("your-");
 
-    // Create Razorpay order
-    const razorpayOrder = await razorpayService.createOrder(
-      total,
-      "INR",
-      order._id.toString()
-    );
+    if (razorpayConfigured) {
+      await order.save();
 
-    // Update order with Razorpay order ID
-    order.razorpayOrderId = razorpayOrder.id;
+      // Create Razorpay order
+      const razorpayOrder = await razorpayService.createOrder(
+        total,
+        "INR",
+        order._id.toString()
+      );
+
+      // Update order with Razorpay order ID
+      order.razorpayOrderId = razorpayOrder.id;
+      await order.save();
+
+      // Clear user's cart
+      await Cart.findOneAndUpdate({ userId }, { items: [] });
+
+      return res.status(201).json({
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        razorpayOrderId: razorpayOrder.id,
+        amount: total,
+        currency: "INR",
+        key: process.env.RAZORPAY_KEY_ID,
+      });
+    }
+
+    // Dev mode: skip Razorpay, mark as paid directly
+    order.status = "confirmed";
+    order.paymentStatus = "paid";
+    order.paymentId = "dev_" + Date.now();
     await order.save();
 
     // Clear user's cart
@@ -110,10 +137,9 @@ const createOrder = async (req, res) => {
     return res.status(201).json({
       orderId: order._id,
       orderNumber: order.orderNumber,
-      razorpayOrderId: razorpayOrder.id,
       amount: total,
       currency: "INR",
-      key: process.env.RAZORPAY_KEY_ID,
+      devMode: true,
     });
   } catch (error) {
     console.error("Create order error:", error);

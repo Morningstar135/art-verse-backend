@@ -87,6 +87,7 @@ const register = async (req, res, next) => {
         role: user.role,
       },
       token,
+      refreshToken,
     });
   } catch (error) {
     next(error);
@@ -135,6 +136,7 @@ const login = async (req, res, next) => {
         role: user.role,
       },
       token,
+      refreshToken,
     });
   } catch (error) {
     next(error);
@@ -147,8 +149,8 @@ const login = async (req, res, next) => {
  */
 const refresh = async (req, res, next) => {
   try {
-    // Read refresh token from cookies
-    const refreshToken = req.cookies && req.cookies.refreshToken;
+    // Read refresh token from body or cookies
+    const refreshToken = req.body.refreshToken || (req.cookies && req.cookies.refreshToken);
     if (!refreshToken) {
       return res.status(401).json({ message: "No refresh token provided" });
     }

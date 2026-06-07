@@ -109,28 +109,53 @@ const enrollInCourse = async (req, res, next) => {
       await Enrollment.deleteOne({ _id: existingEnrollment._id });
     }
 
-    // Create Razorpay order
-    const receipt = `enroll_${req.user._id}_${course._id}`;
-    const razorpayOrder = await razorpayService.createOrder(
-      course.price,
-      "INR",
-      receipt
-    );
+    // Check if Razorpay keys are configured (not placeholders)
+    const razorpayConfigured =
+      process.env.RAZORPAY_KEY_ID &&
+      !process.env.RAZORPAY_KEY_ID.includes("xxxx") &&
+      process.env.RAZORPAY_KEY_SECRET &&
+      !process.env.RAZORPAY_KEY_SECRET.includes("your-");
 
-    // Save pending enrollment
+    if (razorpayConfigured) {
+      // Create Razorpay order
+      const receipt = `enroll_${req.user._id}_${course._id}`;
+      const razorpayOrder = await razorpayService.createOrder(
+        course.price,
+        "INR",
+        receipt
+      );
+
+      // Save pending enrollment
+      const enrollment = new Enrollment({
+        userId: req.user._id,
+        courseId: course._id,
+        razorpayOrderId: razorpayOrder.id,
+        paymentStatus: "pending",
+      });
+
+      await enrollment.save();
+
+      return res.status(200).json({
+        razorpayOrderId: razorpayOrder.id,
+        amount: course.price,
+        key: process.env.RAZORPAY_KEY_ID,
+      });
+    }
+
+    // Dev mode: skip Razorpay, enroll directly
     const enrollment = new Enrollment({
       userId: req.user._id,
       courseId: course._id,
-      razorpayOrderId: razorpayOrder.id,
-      paymentStatus: "pending",
+      paymentStatus: "paid",
+      paymentId: "dev_" + Date.now(),
+      enrolledAt: new Date(),
     });
 
     await enrollment.save();
 
     return res.status(200).json({
-      razorpayOrderId: razorpayOrder.id,
-      amount: course.price,
-      key: process.env.RAZORPAY_KEY_ID,
+      enrollment,
+      devMode: true,
     });
   } catch (error) {
     next(error);
