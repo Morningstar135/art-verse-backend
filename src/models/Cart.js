@@ -10,7 +10,7 @@ const cartItemSchema = new mongoose.Schema(
     medium: {
       type: String,
       required: true,
-      enum: ["paper", "canvas"],
+      enum: ["paper"],
     },
     size: {
       type: String,
@@ -20,7 +20,7 @@ const cartItemSchema = new mongoose.Schema(
     quality: {
       type: String,
       required: true,
-      enum: ["200gsm", "300gsm"],
+      enum: ["300gsm"],
     },
     quantity: {
       type: Number,

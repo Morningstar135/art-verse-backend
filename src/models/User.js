@@ -58,14 +58,20 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
-      unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
       match: [
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
         "Please provide a valid email address",
       ],
+    },
+    phone: {
+      type: String,
+      required: [true, "Phone number is required"],
+      unique: true,
+      trim: true,
+      match: [/^\d{10}$/, "Phone must be exactly 10 digits"],
     },
     password: {
       type: String,
@@ -88,7 +94,7 @@ const userSchema = new mongoose.Schema(
 
 // Index on email for fast lookups (unique already creates an index, but
 // being explicit keeps intent clear).
-userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ phone: 1 }, { unique: true });
 
 /**
  * Pre-save hook: hash the password whenever it is new or modified.

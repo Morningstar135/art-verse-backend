@@ -11,8 +11,8 @@ const pricingSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: {
-        values: ["paper", "canvas"],
-        message: "Medium must be paper or canvas",
+        values: ["paper"],
+        message: "Medium must be paper",
       },
     },
     size: {
@@ -27,8 +27,8 @@ const pricingSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: {
-        values: ["200gsm", "300gsm"],
-        message: "Quality must be 200gsm or 300gsm",
+        values: ["300gsm"],
+        message: "Quality must be 300gsm",
       },
     },
     price: {

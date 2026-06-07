@@ -14,11 +14,10 @@ const registerValidation = [
     .trim()
     .isLength({ min: 2, max: 100 })
     .withMessage("Name must be between 2 and 100 characters"),
-  body("email")
+  body("phone")
     .trim()
-    .isEmail()
-    .normalizeEmail()
-    .withMessage("Please provide a valid email address"),
+    .matches(/^\d{10}$/)
+    .withMessage("Phone must be exactly 10 digits"),
   body("password")
     .isLength({ min: 8 })
     .withMessage("Password must be at least 8 characters"),
@@ -28,11 +27,10 @@ const registerValidation = [
  * Validation rules for the login endpoint.
  */
 const loginValidation = [
-  body("email")
+  body("phone")
     .trim()
-    .isEmail()
-    .normalizeEmail()
-    .withMessage("Please provide a valid email address"),
+    .matches(/^\d{10}$/)
+    .withMessage("Phone must be exactly 10 digits"),
   body("password").notEmpty().withMessage("Password is required"),
 ];
 
@@ -62,16 +60,16 @@ const register = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, email, password } = req.body;
+    const { name, phone, password } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ phone });
     if (existingUser) {
-      return res.status(409).json({ message: "Email already in use" });
+      return res.status(409).json({ message: "Phone number already in use" });
     }
 
     // Create user (password is hashed via pre-save hook)
-    const user = await User.create({ name, email, password });
+    const user = await User.create({ name, phone, password });
 
     // Generate tokens — pass a plain object, not the Mongoose document
     const tokenPayload = { id: user._id.toString(), role: user.role };
@@ -85,7 +83,7 @@ const register = async (req, res, next) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email,
+        phone: user.phone,
         role: user.role,
       },
       token,
@@ -107,10 +105,10 @@ const login = async (req, res, next) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { email, password } = req.body;
+    const { phone, password } = req.body;
 
-    // Find user by email (explicitly select password since toJSON strips it)
-    const user = await User.findOne({ email }).select("+password");
+    // Find user by phone (explicitly select password since toJSON strips it)
+    const user = await User.findOne({ phone }).select("+password");
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -133,7 +131,7 @@ const login = async (req, res, next) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email,
+        phone: user.phone,
         role: user.role,
       },
       token,
@@ -193,6 +191,7 @@ const me = async (req, res, next) => {
     return res.status(200).json({
       id: user._id,
       name: user.name,
+      phone: user.phone,
       email: user.email,
       role: user.role,
       addresses: user.addresses,
