@@ -103,7 +103,6 @@ const getDetail = async (req, res, next) => {
       total: order.total,
       status: order.status,
       paymentId: order.paymentId,
-      razorpayOrderId: order.razorpayOrderId,
       paymentStatus: order.paymentStatus,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,

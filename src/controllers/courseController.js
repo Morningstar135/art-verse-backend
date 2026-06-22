@@ -1,6 +1,5 @@
 const Course = require("../models/Course");
 const Enrollment = require("../models/Enrollment");
-const razorpayService = require("../services/razorpayService");
 
 /**
  * GET /api/courses
@@ -102,7 +101,7 @@ const getCourseDetail = async (req, res, next) => {
 
 /**
  * POST /api/courses/:id/enroll
- * Requires auth. Create Razorpay order and pending enrollment.
+ * Requires auth. Create pending enrollment for manual payment.
  */
 const enrollInCourse = async (req, res, next) => {
   try {
@@ -128,111 +127,20 @@ const enrollInCourse = async (req, res, next) => {
       await Enrollment.deleteOne({ _id: existingEnrollment._id });
     }
 
-    // Check if Razorpay keys are configured (not placeholders)
-    const razorpayConfigured =
-      process.env.RAZORPAY_KEY_ID &&
-      !process.env.RAZORPAY_KEY_ID.includes("xxxx") &&
-      process.env.RAZORPAY_KEY_SECRET &&
-      !process.env.RAZORPAY_KEY_SECRET.includes("your-");
-
-    if (razorpayConfigured) {
-      // Create Razorpay order
-      const receipt = `enroll_${req.user._id}_${course._id}`;
-      const razorpayOrder = await razorpayService.createOrder(
-        course.price,
-        "INR",
-        receipt
-      );
-
-      // Save pending enrollment
-      const enrollment = new Enrollment({
-        userId: req.user._id,
-        courseId: course._id,
-        razorpayOrderId: razorpayOrder.id,
-        paymentStatus: "pending",
-      });
-
-      await enrollment.save();
-
-      return res.status(200).json({
-        razorpayOrderId: razorpayOrder.id,
-        amount: course.price,
-        key: process.env.RAZORPAY_KEY_ID,
-      });
-    }
-
-    // Dev mode: skip Razorpay, enroll directly
+    // Create pending enrollment
     const enrollment = new Enrollment({
       userId: req.user._id,
       courseId: course._id,
-      paymentStatus: "paid",
-      paymentId: "dev_" + Date.now(),
-      enrolledAt: new Date(),
+      paymentStatus: "pending",
     });
 
     await enrollment.save();
 
     return res.status(200).json({
-      enrollment,
-      devMode: true,
+      enrollmentId: enrollment._id,
+      amount: course.price,
+      courseTitle: course.title,
     });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * POST /api/courses/:id/verify-payment
- * Requires auth. Verify Razorpay signature, update enrollment to paid.
- */
-const verifyEnrollmentPayment = async (req, res, next) => {
-  try {
-    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
-
-    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-      return res.status(400).json({ error: "Missing payment details" });
-    }
-
-    // Verify Razorpay signature
-    const isValid = razorpayService.verifyPayment(
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    );
-
-    if (!isValid) {
-      // Mark enrollment as failed
-      await Enrollment.findOneAndUpdate(
-        {
-          userId: req.user._id,
-          courseId: req.params.id,
-          razorpayOrderId,
-        },
-        { paymentStatus: "failed" }
-      );
-      return res.status(400).json({ error: "Payment verification failed" });
-    }
-
-    // Update enrollment to paid
-    const enrollment = await Enrollment.findOneAndUpdate(
-      {
-        userId: req.user._id,
-        courseId: req.params.id,
-        razorpayOrderId,
-      },
-      {
-        paymentStatus: "paid",
-        paymentId: razorpayPaymentId,
-        enrolledAt: new Date(),
-      },
-      { new: true }
-    );
-
-    if (!enrollment) {
-      return res.status(404).json({ error: "Enrollment not found" });
-    }
-
-    return res.status(200).json({ enrollment });
   } catch (error) {
     next(error);
   }
@@ -299,6 +207,5 @@ module.exports = {
   listCourses,
   getCourseDetail,
   enrollInCourse,
-  verifyEnrollmentPayment,
   getLesson,
 };

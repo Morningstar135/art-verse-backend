@@ -15,9 +15,6 @@ const enrollmentSchema = new mongoose.Schema(
     paymentId: {
       type: String,
     },
-    razorpayOrderId: {
-      type: String,
-    },
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed"],

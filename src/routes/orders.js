@@ -11,14 +11,6 @@ router.post(
   orderController.createOrder
 );
 
-// POST /api/orders/:id/verify-payment - Verify Razorpay payment
-router.post(
-  "/:id/verify-payment",
-  auth,
-  orderController.verifyPaymentValidation,
-  orderController.verifyPayment
-);
-
 // GET /api/orders - Get user's orders (paginated)
 router.get("/", auth, orderController.getUserOrders);
 

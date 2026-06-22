@@ -12,9 +12,6 @@ router.get("/:id", optionalAuth, courseController.getCourseDetail);
 // POST /api/courses/:id/enroll - enroll in a course (requires auth)
 router.post("/:id/enroll", auth, courseController.enrollInCourse);
 
-// POST /api/courses/:id/verify-payment - verify enrollment payment (requires auth)
-router.post("/:id/verify-payment", auth, courseController.verifyEnrollmentPayment);
-
 // GET /api/courses/:id/lessons/:lessonId - get lesson (requires auth + enrollment)
 router.get("/:id/lessons/:lessonId", auth, courseController.getLesson);
 

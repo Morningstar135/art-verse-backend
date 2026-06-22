@@ -2,11 +2,11 @@ const { body, param, query, validationResult } = require("express-validator");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Artwork = require("../models/Artwork");
-const razorpayService = require("../services/razorpayService");
 
 /**
  * POST /api/orders
- * Creates a new order from the user's cart and initiates Razorpay payment.
+ * Creates a new order from the user's cart.
+ * Payment is handled offline via UPI/bank transfer.
  */
 const createOrder = async (req, res) => {
   try {
@@ -80,7 +80,7 @@ const createOrder = async (req, res) => {
     const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const total = subtotal;
 
-    // Create the order document first to get the ID
+    // Create the order with pending payment status
     const order = new Order({
       userId,
       items: orderItems,
@@ -91,44 +91,6 @@ const createOrder = async (req, res) => {
       paymentStatus: "pending",
     });
 
-    // Check if Razorpay keys are configured (not placeholders)
-    const razorpayConfigured =
-      process.env.RAZORPAY_KEY_ID &&
-      !process.env.RAZORPAY_KEY_ID.includes("xxxx") &&
-      process.env.RAZORPAY_KEY_SECRET &&
-      !process.env.RAZORPAY_KEY_SECRET.includes("your-");
-
-    if (razorpayConfigured) {
-      await order.save();
-
-      // Create Razorpay order
-      const razorpayOrder = await razorpayService.createOrder(
-        total,
-        "INR",
-        order._id.toString()
-      );
-
-      // Update order with Razorpay order ID
-      order.razorpayOrderId = razorpayOrder.id;
-      await order.save();
-
-      // Clear user's cart
-      await Cart.findOneAndUpdate({ userId }, { items: [] });
-
-      return res.status(201).json({
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        razorpayOrderId: razorpayOrder.id,
-        amount: total,
-        currency: "INR",
-        key: process.env.RAZORPAY_KEY_ID,
-      });
-    }
-
-    // Dev mode: skip Razorpay, mark as paid directly
-    order.status = "confirmed";
-    order.paymentStatus = "paid";
-    order.paymentId = "dev_" + Date.now();
     await order.save();
 
     // Clear user's cart
@@ -139,60 +101,10 @@ const createOrder = async (req, res) => {
       orderNumber: order.orderNumber,
       amount: total,
       currency: "INR",
-      devMode: true,
     });
   } catch (error) {
     console.error("Create order error:", error);
     return res.status(500).json({ error: "Failed to create order" });
-  }
-};
-
-/**
- * POST /api/orders/:id/verify-payment
- * Verifies Razorpay payment and updates order status.
- */
-const verifyPayment = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    const { razorpayPaymentId, razorpayOrderId, razorpaySignature } = req.body;
-
-    const order = await Order.findById(id);
-
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    // Verify the order belongs to the authenticated user
-    if (order.userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ error: "Unauthorized access to order" });
-    }
-
-    // Verify payment signature
-    const isValid = razorpayService.verifyPayment(
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature
-    );
-
-    if (!isValid) {
-      return res.status(400).json({ error: "Payment verification failed" });
-    }
-
-    // Update order with payment details
-    order.paymentId = razorpayPaymentId;
-    order.status = "confirmed";
-    order.paymentStatus = "paid";
-    await order.save();
-
-    return res.status(200).json(order);
-  } catch (error) {
-    console.error("Verify payment error:", error);
-    return res.status(500).json({ error: "Payment verification failed" });
   }
 };
 
@@ -261,19 +173,6 @@ const getOrderDetail = async (req, res) => {
   }
 };
 
-// Validation rules
-const verifyPaymentValidation = [
-  body("razorpayPaymentId")
-    .notEmpty()
-    .withMessage("Razorpay payment ID is required"),
-  body("razorpayOrderId")
-    .notEmpty()
-    .withMessage("Razorpay order ID is required"),
-  body("razorpaySignature")
-    .notEmpty()
-    .withMessage("Razorpay signature is required"),
-];
-
 const createOrderValidation = [
   body("shippingAddress.line1")
     .notEmpty()
@@ -294,9 +193,7 @@ const createOrderValidation = [
 
 module.exports = {
   createOrder,
-  verifyPayment,
   getUserOrders,
   getOrderDetail,
-  verifyPaymentValidation,
   createOrderValidation,
 };
