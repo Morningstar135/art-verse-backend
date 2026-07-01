@@ -12,6 +12,9 @@ router.get("/:id", optionalAuth, courseController.getCourseDetail);
 // POST /api/courses/:id/enroll - enroll in a course (requires auth)
 router.post("/:id/enroll", auth, courseController.enrollInCourse);
 
+// POST /api/courses/:id/confirm-payment - submit transaction last 4 digits
+router.post("/:id/confirm-payment", auth, courseController.confirmCoursePayment);
+
 // GET /api/courses/:id/lessons/:lessonId - get lesson (requires auth + enrollment)
 router.get("/:id/lessons/:lessonId", auth, courseController.getLesson);
 

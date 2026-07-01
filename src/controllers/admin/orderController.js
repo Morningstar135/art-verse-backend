@@ -104,6 +104,7 @@ const getDetail = async (req, res, next) => {
       status: order.status,
       paymentId: order.paymentId,
       paymentStatus: order.paymentStatus,
+      transactionLast4: order.transactionLast4 || null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     });
@@ -153,4 +154,38 @@ const updateStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { listAll, getDetail, updateStatus };
+/**
+ * PUT /api/admin/orders/:id/payment-status
+ * Admin can update payment status to paid, failed, or refunded.
+ */
+const updatePaymentStatus = async (req, res, next) => {
+  try {
+    const { paymentStatus } = req.body;
+
+    if (!paymentStatus || !["paid", "failed", "refunded"].includes(paymentStatus)) {
+      return res.status(400).json({
+        error: "Invalid payment status. Allowed: paid, failed, refunded",
+      });
+    }
+
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    order.paymentStatus = paymentStatus;
+    await order.save();
+
+    return res.status(200).json({
+      id: order._id,
+      orderNumber: order.orderNumber,
+      paymentStatus: order.paymentStatus,
+      message: `Payment status updated to "${paymentStatus}"`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { listAll, getDetail, updateStatus, updatePaymentStatus };

@@ -2,11 +2,13 @@ const { body, param, query, validationResult } = require("express-validator");
 const Order = require("../models/Order");
 const Cart = require("../models/Cart");
 const Artwork = require("../models/Artwork");
+const User = require("../models/User");
+const { notifyAdminNewOrder } = require("../services/emailService");
 
 /**
  * POST /api/orders
  * Creates a new order from the user's cart.
- * Payment is handled offline via UPI/bank transfer.
+ * Only called after user has paid and entered transaction last 4 digits.
  */
 const createOrder = async (req, res) => {
   try {
@@ -16,9 +18,13 @@ const createOrder = async (req, res) => {
     }
 
     const userId = req.user._id;
-    const { shippingAddress } = req.body;
+    const { shippingAddress, transactionLast4 } = req.body;
 
-    // Fetch user's cart with populated artwork data
+    if (!transactionLast4 || !/^\d{4}$/.test(transactionLast4)) {
+      return res.status(400).json({ error: "Please enter the last 4 digits of your transaction ID" });
+    }
+
+    // Fetch user's cart
     const cart = await Cart.findOne({ userId }).lean();
 
     if (!cart || !cart.items || cart.items.length === 0) {
@@ -32,7 +38,6 @@ const createOrder = async (req, res) => {
       isActive: true,
     }).lean();
 
-    // Create a lookup map for artworks
     const artworkMap = {};
     artworks.forEach((artwork) => {
       artworkMap[artwork._id.toString()] = artwork;
@@ -43,7 +48,7 @@ const createOrder = async (req, res) => {
       const artwork = artworkMap[item.artworkId.toString()];
       if (!artwork) {
         return res.status(400).json({
-          error: `Artwork is no longer available. Please update your cart.`,
+          error: "Artwork is no longer available. Please update your cart.",
         });
       }
     }
@@ -52,7 +57,6 @@ const createOrder = async (req, res) => {
     const orderItems = cart.items.map((item) => {
       const artwork = artworkMap[item.artworkId.toString()];
 
-      // Find matching pricing from artwork
       const pricing = artwork.pricing.find(
         (p) =>
           p.medium === item.medium &&
@@ -76,17 +80,17 @@ const createOrder = async (req, res) => {
       };
     });
 
-    // Calculate totals
     const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
     const total = subtotal;
 
-    // Create the order with pending payment status
+    // Create order with transaction details — only confirmed orders hit DB
     const order = new Order({
       userId,
       items: orderItems,
       shippingAddress,
       subtotal,
       total,
+      transactionLast4,
       status: "pending",
       paymentStatus: "pending",
     });
@@ -95,6 +99,17 @@ const createOrder = async (req, res) => {
 
     // Clear user's cart
     await Cart.findOneAndUpdate({ userId }, { items: [] });
+
+    // Notify admin via email
+    const user = await User.findById(userId).lean();
+    const customerName = user?.name || user?.email || "Unknown";
+
+    await notifyAdminNewOrder({
+      orderNumber: order.orderNumber,
+      amount: total,
+      transactionLast4,
+      customerName,
+    });
 
     return res.status(201).json({
       orderId: order._id,
@@ -161,7 +176,6 @@ const getOrderDetail = async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Verify the order belongs to the authenticated user
     if (order.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ error: "Unauthorized access to order" });
     }

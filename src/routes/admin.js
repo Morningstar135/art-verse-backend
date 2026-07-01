@@ -52,6 +52,7 @@ router.delete(
 router.get("/orders", adminOrderController.listAll);
 router.get("/orders/:id", adminOrderController.getDetail);
 router.put("/orders/:id/status", adminOrderController.updateStatus);
+router.put("/orders/:id/payment-status", adminOrderController.updatePaymentStatus);
 
 // ── Announcements ─────────────────────────────────────────────────────
 router.get("/announcements", adminAnnouncementController.list);

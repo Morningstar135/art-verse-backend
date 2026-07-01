@@ -124,6 +124,10 @@ const orderSchema = new mongoose.Schema(
     paymentId: {
       type: String,
     },
+    transactionLast4: {
+      type: String,
+      match: [/^\d{4}$/, "Must be exactly 4 digits"],
+    },
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed", "refunded"],

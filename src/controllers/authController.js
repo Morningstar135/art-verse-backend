@@ -5,7 +5,7 @@ const {
   generateRefreshToken,
   verifyToken,
 } = require("../utils/jwt");
-const twilioService = require("../services/twilioService");
+const emailService = require("../services/emailService");
 
 /**
  * Validation rules for the register endpoint.
@@ -15,6 +15,10 @@ const registerValidation = [
     .trim()
     .isLength({ min: 2, max: 100 })
     .withMessage("Name must be between 2 and 100 characters"),
+  body("email")
+    .trim()
+    .isEmail()
+    .withMessage("Valid email is required"),
   body("phone")
     .trim()
     .matches(/^\d{10}$/)
@@ -28,17 +32,15 @@ const registerValidation = [
  * Validation rules for the login endpoint.
  */
 const loginValidation = [
-  body("phone")
+  body("email")
     .trim()
-    .matches(/^\d{10}$/)
-    .withMessage("Phone must be exactly 10 digits"),
+    .isEmail()
+    .withMessage("Valid email is required"),
   body("password").notEmpty().withMessage("Password is required"),
 ];
 
 /**
  * Helper: attach the refresh token as an HTTP-only cookie on the response.
- * @param {object} res - Express response object.
- * @param {string} refreshToken - The signed refresh JWT.
  */
 const setRefreshCookie = (res, refreshToken) => {
   res.cookie("refreshToken", refreshToken, {
@@ -55,35 +57,44 @@ const setRefreshCookie = (res, refreshToken) => {
  */
 const register = async (req, res, next) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, phone, password } = req.body;
+    const { name, email, phone, password, otpCode } = req.body;
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ phone });
-    if (existingUser) {
-      return res.status(409).json({ message: "Phone number already in use" });
+    // Verify OTP before creating account
+    if (!otpCode) {
+      return res.status(400).json({ message: "OTP code is required" });
     }
 
-    // Create user (password is hashed via pre-save hook)
-    const user = await User.create({ name, phone, password });
+    const otpResult = await emailService.verifyOTP(email, otpCode);
+    if (!otpResult.valid) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
 
-    // Generate tokens — pass a plain object, not the Mongoose document
+    // Check if user already exists
+    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
+    if (existingUser) {
+      const field = existingUser.email === email ? "Email" : "Phone number";
+      return res.status(409).json({ message: `${field} already in use` });
+    }
+
+    // Create user
+    const user = await User.create({ name, email, phone, password });
+
     const tokenPayload = { id: user._id.toString(), role: user.role };
     const token = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    // Set refresh token cookie
     setRefreshCookie(res, refreshToken);
 
     return res.status(201).json({
       user: {
         id: user._id,
         name: user.name,
+        email: user.email,
         phone: user.phone,
         role: user.role,
       },
@@ -101,38 +112,34 @@ const register = async (req, res, next) => {
  */
 const login = async (req, res, next) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { phone, password } = req.body;
+    const { email, password } = req.body;
 
-    // Find user by phone (explicitly select password since toJSON strips it)
-    const user = await User.findOne({ phone }).select("+password");
+    const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Compare password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Generate tokens — pass a plain object, not the Mongoose document
     const tokenPayload = { id: user._id.toString(), role: user.role };
     const token = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
 
-    // Set refresh token cookie
     setRefreshCookie(res, refreshToken);
 
     return res.status(200).json({
       user: {
         id: user._id,
         name: user.name,
+        email: user.email,
         phone: user.phone,
         role: user.role,
       },
@@ -146,17 +153,14 @@ const login = async (req, res, next) => {
 
 /**
  * POST /api/auth/refresh
- * Issue a new access token using the refresh token from cookie.
  */
 const refresh = async (req, res, next) => {
   try {
-    // Read refresh token from body or cookies
     const refreshToken = req.body.refreshToken || (req.cookies && req.cookies.refreshToken);
     if (!refreshToken) {
       return res.status(401).json({ message: "No refresh token provided" });
     }
 
-    // Verify refresh token
     let decoded;
     try {
       decoded = verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
@@ -164,13 +168,11 @@ const refresh = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid or expired refresh token" });
     }
 
-    // Find user
     const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    // Generate new access token — pass a plain object, not the Mongoose document
     const token = generateAccessToken({ id: user._id.toString(), role: user.role });
 
     return res.status(200).json({ token });
@@ -181,8 +183,6 @@ const refresh = async (req, res, next) => {
 
 /**
  * GET /api/auth/me
- * Return the currently authenticated user's profile.
- * Requires auth middleware to populate req.user.
  */
 const me = async (req, res, next) => {
   try {
@@ -206,19 +206,19 @@ const me = async (req, res, next) => {
 
 /**
  * POST /api/auth/send-otp
- * Send OTP to a phone number for verification.
+ * Send OTP to an email address.
  */
 const sendOtp = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const { email } = req.body;
 
-    if (!phone || !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
     }
 
-    const result = await twilioService.sendOTP(`+91${phone}`);
+    await emailService.sendOTP(email);
 
-    return res.status(200).json({ message: "OTP sent successfully" });
+    return res.status(200).json({ message: "OTP sent to your email" });
   } catch (error) {
     console.error("Send OTP error:", error);
     return res.status(500).json({ error: "Failed to send OTP" });
@@ -227,21 +227,21 @@ const sendOtp = async (req, res, next) => {
 
 /**
  * POST /api/auth/verify-otp
- * Verify OTP for a phone number.
+ * Verify OTP for an email.
  */
 const verifyOtp = async (req, res, next) => {
   try {
-    const { phone, code } = req.body;
+    const { email, code } = req.body;
 
-    if (!phone || !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
     }
 
     if (!code) {
       return res.status(400).json({ error: "OTP code is required" });
     }
 
-    const result = await twilioService.verifyOTP(`+91${phone}`, code);
+    const result = await emailService.verifyOTP(email, code, false);
 
     if (!result.valid) {
       return res.status(400).json({ error: "Invalid or expired OTP" });
@@ -256,25 +256,24 @@ const verifyOtp = async (req, res, next) => {
 
 /**
  * POST /api/auth/forgot-password
- * Send OTP to phone for password reset.
+ * Send OTP to email for password reset.
  */
 const forgotPassword = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const { email } = req.body;
 
-    if (!phone || !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
     }
 
-    // Check if user exists
-    const user = await User.findOne({ phone });
+    const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ error: "No account found with this phone number" });
+      return res.status(404).json({ error: "No account found with this email" });
     }
 
-    const result = await twilioService.sendOTP(`+91${phone}`);
+    await emailService.sendOTP(email);
 
-    return res.status(200).json({ message: "OTP sent for password reset" });
+    return res.status(200).json({ message: "OTP sent to your email" });
   } catch (error) {
     console.error("Forgot password error:", error);
     return res.status(500).json({ error: "Failed to send OTP" });
@@ -287,10 +286,10 @@ const forgotPassword = async (req, res, next) => {
  */
 const resetPassword = async (req, res, next) => {
   try {
-    const { phone, code, newPassword } = req.body;
+    const { email, code, newPassword } = req.body;
 
-    if (!phone || !/^\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: "Valid 10-digit phone number is required" });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Valid email is required" });
     }
 
     if (!code) {
@@ -301,14 +300,12 @@ const resetPassword = async (req, res, next) => {
       return res.status(400).json({ error: "Password must be at least 8 characters" });
     }
 
-    // Verify OTP
-    const result = await twilioService.verifyOTP(`+91${phone}`, code);
+    const result = await emailService.verifyOTP(email, code);
     if (!result.valid) {
       return res.status(400).json({ error: "Invalid or expired OTP" });
     }
 
-    // Update password
-    const user = await User.findOne({ phone });
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }

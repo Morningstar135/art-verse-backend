@@ -1,5 +1,7 @@
 const Course = require("../models/Course");
 const Enrollment = require("../models/Enrollment");
+const User = require("../models/User");
+const { notifyAdminNewEnrollment } = require("../services/emailService");
 
 /**
  * GET /api/courses
@@ -203,9 +205,56 @@ const getLesson = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/courses/:id/confirm-payment
+ * User submits last 4 digits of transaction ID after course payment.
+ * Sends SMS notification to admin.
+ */
+const confirmCoursePayment = async (req, res, next) => {
+  try {
+    const { transactionLast4 } = req.body;
+
+    if (!transactionLast4 || !/^\d{4}$/.test(transactionLast4)) {
+      return res.status(400).json({ error: "Please enter the last 4 digits of your transaction ID" });
+    }
+
+    const enrollment = await Enrollment.findOne({
+      userId: req.user._id,
+      courseId: req.params.id,
+    });
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    enrollment.transactionLast4 = transactionLast4;
+    await enrollment.save();
+
+    // Get course and customer details for SMS
+    const [course, user] = await Promise.all([
+      Course.findById(req.params.id).lean(),
+      User.findById(req.user._id).lean(),
+    ]);
+
+    const customerName = user?.name || user?.phone || "Unknown";
+
+    await notifyAdminNewEnrollment({
+      courseTitle: course?.title || "Unknown Course",
+      amount: course?.price || 0,
+      transactionLast4,
+      customerName,
+    });
+
+    return res.status(200).json({ message: "Payment details submitted successfully" });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   listCourses,
   getCourseDetail,
   enrollInCourse,
+  confirmCoursePayment,
   getLesson,
 };
