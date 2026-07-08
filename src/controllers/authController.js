@@ -220,8 +220,11 @@ const sendOtp = async (req, res, next) => {
 
     return res.status(200).json({ message: "OTP sent to your email" });
   } catch (error) {
-    console.error("Send OTP error:", error);
-    return res.status(500).json({ error: "Failed to send OTP" });
+    console.error("Send OTP error:", error.message, error.stack);
+    const message = error.message?.includes("SMTP is not configured")
+      ? "Email service is not configured on the server"
+      : "Failed to send OTP. Please try again later.";
+    return res.status(500).json({ error: message });
   }
 };
 
@@ -275,8 +278,11 @@ const forgotPassword = async (req, res, next) => {
 
     return res.status(200).json({ message: "OTP sent to your email" });
   } catch (error) {
-    console.error("Forgot password error:", error);
-    return res.status(500).json({ error: "Failed to send OTP" });
+    console.error("Forgot password error:", error.message, error.stack);
+    const message = error.message?.includes("SMTP is not configured")
+      ? "Email service is not configured on the server"
+      : "Failed to send OTP. Please try again later.";
+    return res.status(500).json({ error: message });
   }
 };
 

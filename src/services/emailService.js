@@ -1,20 +1,9 @@
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 
 // In-memory OTP store: { email: { code, expiresAt } }
 const otpStore = new Map();
 
 const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT, 10),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
 
 /**
  * Generate a 6-digit OTP.
@@ -24,15 +13,44 @@ function generateOTP() {
 }
 
 /**
- * Send an email.
+ * Send an email via Brevo HTTP API (works on Render free tier where SMTP port 587 is blocked).
+ * Uses the same SMTP_PASS (xsmtpsib-...) as the API key since Brevo accepts it.
+ * If BREVO_API_KEY is set, it takes priority.
  */
 async function sendEmail({ to, subject, html }) {
-  return transporter.sendMail({
-    from: `"${process.env.SMTP_FROM_NAME || "DheenaArts"}" <${process.env.SMTP_FROM_EMAIL || "noreply@dheenaarts.com"}>`,
-    to,
-    subject,
-    html,
+  const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
+
+  if (!apiKey) {
+    throw new Error(
+      "Email service not configured. Set BREVO_API_KEY (or SMTP_PASS) environment variable."
+    );
+  }
+
+  const senderName = process.env.SMTP_FROM_NAME || "DheenaArts";
+  const senderEmail = process.env.SMTP_FROM_EMAIL || "noreply@dheenaarts.com";
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
   });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error("Brevo API error:", response.status, errorBody);
+    throw new Error(`Brevo API error (${response.status}): ${errorBody}`);
+  }
+
+  return response.json();
 }
 
 /**
