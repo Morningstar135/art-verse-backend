@@ -54,6 +54,17 @@ async function sendEmail({ to, subject, html }) {
 }
 
 /**
+ * Format an amount stored in paise into a rupee string (e.g. 220000 -> "2,200.00").
+ */
+function formatRupees(paise) {
+  const rupees = Number(paise || 0) / 100;
+  return rupees.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
  * Send OTP to an email address.
  */
 async function sendOTP(email) {
@@ -114,18 +125,25 @@ async function verifyOTP(email, code, consume = true) {
  */
 async function notifyAdminNewOrder({ orderNumber, amount, transactionLast4, customerName }) {
   const adminEmail = process.env.ADMIN_EMAIL;
-  if (!adminEmail) return;
+  if (!adminEmail) {
+    console.warn(
+      `[order-notify] ADMIN_EMAIL not set — skipping new-order email for #${orderNumber}`
+    );
+    return;
+  }
 
   try {
+    console.log(`[order-notify] Sending new-order email for #${orderNumber} to ${adminEmail}`);
+    const amountStr = formatRupees(amount);
     await sendEmail({
       to: adminEmail,
-      subject: `New Order #${orderNumber} - Rs.${amount}`,
+      subject: `New Order #${orderNumber} - Rs.${amountStr}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
           <h2 style="color: #e94560;">New Art Order Received!</h2>
           <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
             <tr><td style="padding: 8px 0; color: #888; width: 140px;">Order</td><td style="padding: 8px 0; font-weight: 600;">#${orderNumber}</td></tr>
-            <tr><td style="padding: 8px 0; color: #888;">Amount</td><td style="padding: 8px 0; font-weight: 600;">Rs.${amount}</td></tr>
+            <tr><td style="padding: 8px 0; color: #888;">Amount</td><td style="padding: 8px 0; font-weight: 600;">Rs.${amountStr}</td></tr>
             <tr><td style="padding: 8px 0; color: #888;">Txn Last 4 Digits</td><td style="padding: 8px 0; font-weight: 600; font-size: 18px; letter-spacing: 4px;">${transactionLast4}</td></tr>
             <tr><td style="padding: 8px 0; color: #888;">Customer</td><td style="padding: 8px 0; font-weight: 600;">${customerName}</td></tr>
           </table>
@@ -143,18 +161,24 @@ async function notifyAdminNewOrder({ orderNumber, amount, transactionLast4, cust
  */
 async function notifyAdminNewEnrollment({ courseTitle, amount, transactionLast4, customerName }) {
   const adminEmail = process.env.ADMIN_EMAIL;
-  if (!adminEmail) return;
+  if (!adminEmail) {
+    console.warn(
+      `[enroll-notify] ADMIN_EMAIL not set — skipping new-enrollment email for "${courseTitle}"`
+    );
+    return;
+  }
 
   try {
+    const amountStr = formatRupees(amount);
     await sendEmail({
       to: adminEmail,
-      subject: `New Enrollment - ${courseTitle} - Rs.${amount}`,
+      subject: `New Enrollment - ${courseTitle} - Rs.${amountStr}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
           <h2 style="color: #e94560;">New Course Enrollment!</h2>
           <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
             <tr><td style="padding: 8px 0; color: #888; width: 140px;">Course</td><td style="padding: 8px 0; font-weight: 600;">${courseTitle}</td></tr>
-            <tr><td style="padding: 8px 0; color: #888;">Amount</td><td style="padding: 8px 0; font-weight: 600;">Rs.${amount}</td></tr>
+            <tr><td style="padding: 8px 0; color: #888;">Amount</td><td style="padding: 8px 0; font-weight: 600;">Rs.${amountStr}</td></tr>
             <tr><td style="padding: 8px 0; color: #888;">Txn Last 4 Digits</td><td style="padding: 8px 0; font-weight: 600; font-size: 18px; letter-spacing: 4px;">${transactionLast4}</td></tr>
             <tr><td style="padding: 8px 0; color: #888;">Customer</td><td style="padding: 8px 0; font-weight: 600;">${customerName}</td></tr>
           </table>
